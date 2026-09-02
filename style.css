@@ -1,5 +1,5 @@
 :root,
-[data-theme="light"] {
+html[data-theme="light"] {
   color-scheme: light;
   --bg: #fdf6e3;
   --bg-side: #eee8d5;
@@ -15,18 +15,18 @@
   --null: #93a1a1;
   --qt: #b8b09a;
   --punct: #839496;
-  --sel: #f5e9a8;
-  --col-hl: #f0d77a;
+  --sel: #f7edc2;
+  --col-hl: #f3e7a3;
   --trunc-bg: #f8d4cc;
   --trunc-fg: #a33b32;
-  --nested: #93c5e4;
+  --count: #d33682;
   --btn: #eee8d5;
   --btn-hover: #e4dcc6;
   --warn: #b58900;
   --warn-bad: #cb4b16;
 }
 
-[data-theme="dark"] {
+html[data-theme="blue"] {
   color-scheme: dark;
   --bg: #002b36;
   --bg-side: #073642;
@@ -42,14 +42,41 @@
   --null: #657b83;
   --qt: #586e75;
   --punct: #657b83;
-  --sel: #4a4318;
-  --col-hl: #6a5c1e;
+  --sel: #3a3820;
+  --col-hl: #524e28;
   --trunc-bg: #5a2a28;
   --trunc-fg: #f0b0a8;
-  --nested: #2a6f8f;
+  --count: #d486b0;
   --btn: #0b3a46;
   --btn-hover: #12505e;
   --warn: #c9a64e;
+  --warn-bad: #ea8a62;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111111;
+  --bg-side: #1a1a1a;
+  --bg-elev: #1e1e1e;
+  --fg: #c6c6c6;
+  --fg-strong: #ececec;
+  --fg-dim: #7c7c7c;
+  --border: #333333;
+  --key: #7eb8e0;
+  --str: #7dccb8;
+  --num: #d89bb8;
+  --bool: #d4b56a;
+  --null: #8a8a8a;
+  --qt: #6e6e6e;
+  --punct: #8a8a8a;
+  --sel: #2a2818;
+  --col-hl: #3d3a1c;
+  --trunc-bg: #4a2424;
+  --trunc-fg: #f0b0a8;
+  --count: #d89bb8;
+  --btn: #2a2a2a;
+  --btn-hover: #3a3a3a;
+  --warn: #d4b56a;
   --warn-bad: #ea8a62;
 }
 
@@ -158,12 +185,31 @@ button:focus-visible {
 }
 
 .theme-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.3rem;
   margin-top: auto;
   padding-top: 0.4rem;
 }
 
-#theme-btn {
-  width: 100%;
+.theme-row button.is-on {
+  background: var(--btn-hover);
+  font-weight: 650;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--fg-strong);
+  cursor: pointer;
+  user-select: none;
+}
+
+.check input {
+  margin: 0;
+  accent-color: var(--key);
 }
 
 .stage {
@@ -261,7 +307,10 @@ button:focus-visible {
 
 .preview {
   display: none;
-  color: var(--fg-dim);
+}
+
+.preview .ellipsis {
+  color: var(--count);
 }
 
 .block.is-collapsed > .line .preview {
@@ -272,9 +321,11 @@ button:focus-visible {
   display: none;
 }
 
-.block.nested > .line:first-child .content {
-  box-shadow: inset 3px 0 0 var(--nested);
-  padding-left: calc(var(--d, 0) * 1.05rem + 0.35rem);
+.nested-key {
+  text-decoration: underline dashed var(--key);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+  cursor: help;
 }
 
 .k {

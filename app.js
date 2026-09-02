@@ -2,6 +2,8 @@ import { parse, countValues, isEmptyAst } from "./parser.js";
 
 const LS_TEXT = "json-viewer.text";
 const LS_THEME = "json-viewer.theme";
+const LS_NEST = "json-viewer.nest";
+const THEMES = ["light", "blue", "dark"];
 
 const source = document.querySelector("#source");
 const viewer = document.querySelector("#viewer");
@@ -15,7 +17,8 @@ const selTip = document.querySelector("#sel-tip");
 const expandBtn = document.querySelector("#expand-btn");
 const collapseBtn = document.querySelector("#collapse-btn");
 const shareBtn = document.querySelector("#share-btn");
-const themeBtn = document.querySelector("#theme-btn");
+const nestToggle = document.querySelector("#nest-toggle");
+const themeBtns = [...document.querySelectorAll(".theme-row [data-theme]")];
 
 const ctx = { line: 0 };
 let lineSel = null;
@@ -26,7 +29,8 @@ let lastTipSpec = null;
 init();
 
 function init() {
-  applyTheme(localStorage.getItem(LS_THEME) || "light");
+  applyTheme(readTheme());
+  nestToggle.checked = localStorage.getItem(LS_NEST) !== "0";
 
   const fromHash = readHash(location.hash);
   if (fromHash?.text) {
@@ -52,13 +56,27 @@ function init() {
     openShare(lastTipSpec);
   });
   copyBtn.addEventListener("click", copyShare);
-  themeBtn.addEventListener("click", toggleTheme);
+  nestToggle.addEventListener("change", onNestToggle);
+  themeBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      localStorage.setItem(LS_THEME, btn.dataset.theme);
+      applyTheme(btn.dataset.theme);
+    });
+  });
   viewer.addEventListener("mousedown", onViewerMouseDown);
   viewer.addEventListener("click", onViewerClick);
   viewer.addEventListener("scroll", hideTip);
   document.addEventListener("selectionchange", onSelChange);
   window.addEventListener("hashchange", onHashChange);
   shareUrl.addEventListener("focus", () => shareUrl.select());
+}
+
+function onNestToggle() {
+  localStorage.setItem(LS_NEST, nestToggle.checked ? "1" : "0");
+  lineSel = null;
+  lastClicked = null;
+  pendingSel = null;
+  render();
 }
 
 function onSourceInput() {
@@ -104,7 +122,7 @@ function render() {
   hideTip();
   ctx.line = 0;
   const text = source.value;
-  const ast = text.trim() ? parse(text) : null;
+  const ast = text.trim() ? parse(text, { nest: nestToggle.checked }) : null;
   const has = ast && !isEmptyAst(ast);
 
   expandBtn.disabled = !has;
@@ -132,7 +150,7 @@ function render() {
   statusEl.textContent = `${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}`;
 
   const root = document.createDocumentFragment();
-  renderValue(ast, 0, [], root, false, false);
+  renderValue(ast, 0, [], root, false);
   viewer.replaceChildren(root);
 
   if (pendingSel) {
@@ -144,10 +162,10 @@ function render() {
   }
 }
 
-function renderValue(node, depth, prefix, parent, comma, nested) {
+function renderValue(node, depth, prefix, parent, comma) {
   if (node.type === "doc") {
     for (const item of node.items) {
-      renderValue(item, depth, [], parent, false, false);
+      renderValue(item, depth, [], parent, false);
     }
     if (node.truncated && !node.items.some((n) => n.truncated)) {
       appendTruncOnLast(parent);
@@ -156,12 +174,12 @@ function renderValue(node, depth, prefix, parent, comma, nested) {
   }
 
   if (node.type === "string" && node.nested) {
-    renderValue(node.nested, depth, prefix, parent, comma, true);
+    renderValue(node.nested, depth, prefix, parent, comma);
     return;
   }
 
   if (node.type === "object" || node.type === "array") {
-    renderCompound(node, depth, prefix, parent, comma, nested);
+    renderCompound(node, depth, prefix, parent, comma);
     return;
   }
 
@@ -171,7 +189,7 @@ function renderValue(node, depth, prefix, parent, comma, nested) {
   if (node.truncated || node.type === "missing") row.content.append(truncMark());
 }
 
-function renderCompound(node, depth, prefix, parent, comma, nested) {
+function renderCompound(node, depth, prefix, parent, comma) {
   const isObj = node.type === "object";
   const kids = isObj ? node.entries : node.items;
   const open = isObj ? "{" : "[";
@@ -184,13 +202,14 @@ function renderCompound(node, depth, prefix, parent, comma, nested) {
     return;
   }
 
-  const block = el("div", { class: nested ? "block nested" : "block" });
-  if (nested) block.title = "Parsed from a JSON string";
+  const block = el("div", { class: "block" });
   const opener = newLine(depth, block);
   const fold = foldButton();
   opener.foldSlot.append(fold);
   opener.content.append(...prefix, tok("p", open));
-  opener.content.append(el("span", { class: "preview" }, ` … ${close}${comma ? "," : ""}`));
+  const preview = el("span", { class: "preview" });
+  preview.append(el("span", { class: "ellipsis" }, `…${kids.length}`), tok("p", close + (comma ? "," : "")));
+  opener.content.append(preview);
 
   const children = el("div", { class: "children" });
 
@@ -198,7 +217,7 @@ function renderCompound(node, depth, prefix, parent, comma, nested) {
     const last = i === kids.length - 1;
     const needComma = !last;
     if (isObj) renderEntry(kid, depth + 1, children, needComma);
-    else renderValue(kid, depth + 1, [], children, needComma, false);
+    else renderValue(kid, depth + 1, [], children, needComma);
   });
 
   if (node.truncated && !children.querySelector(".trunc") && !opener.content.querySelector(".trunc")) {
@@ -223,7 +242,8 @@ function renderCompound(node, depth, prefix, parent, comma, nested) {
 }
 
 function renderEntry(entry, depth, parent, comma) {
-  const prefix = [...quoted("k", entry.key), tok("p", ": ")];
+  const nested = Boolean(entry.value?.nested);
+  const prefix = keyPrefix(entry.key, nested);
 
   if (entry.keyTruncated) {
     const row = newLine(depth, parent);
@@ -231,7 +251,7 @@ function renderEntry(entry, depth, parent, comma) {
     return;
   }
 
-  renderValue(entry.value, depth, prefix, parent, comma, false);
+  renderValue(entry.value, depth, prefix, parent, comma);
 }
 
 function primitive(node) {
@@ -253,6 +273,18 @@ function primitive(node) {
 
 function quoted(kind, text) {
   return [tok("qt", '"'), tok(kind, text), tok("qt", '"')];
+}
+
+function keyPrefix(key, nested) {
+  if (nested) {
+    const wrap = el("span", {
+      class: "nested-key",
+      title: "Parsed from a JSON string",
+    });
+    wrap.append(tok("qt", '"'), tok("k", key), tok("qt", '"'));
+    return [wrap, tok("p", ": ")];
+  }
+  return [...quoted("k", key), tok("p", ": ")];
 }
 
 function newLine(depth, parent) {
@@ -615,15 +647,17 @@ async function copyShare() {
   }, 1400);
 }
 
-function applyTheme(theme) {
-  const next = theme === "dark" ? "dark" : "light";
-  document.documentElement.dataset.theme = next;
-  themeBtn.setAttribute("aria-pressed", String(next === "dark"));
-  themeBtn.textContent = next === "dark" ? "Light theme" : "Dark theme";
+function readTheme() {
+  const stored = localStorage.getItem(LS_THEME);
+  if (THEMES.includes(stored)) return stored;
+  return "light";
 }
 
-function toggleTheme() {
-  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem(LS_THEME, next);
-  applyTheme(next);
+function applyTheme(theme) {
+  const next = THEMES.includes(theme) ? theme : "light";
+  document.documentElement.dataset.theme = next;
+  themeBtns.forEach((btn) => {
+    btn.classList.toggle("is-on", btn.dataset.theme === next);
+    btn.setAttribute("aria-pressed", String(btn.dataset.theme === next));
+  });
 }

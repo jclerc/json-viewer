@@ -1,16 +1,17 @@
 const NEST_LIMIT = 8;
 
 export function parse(text, options = {}) {
-  const parser = new Parser(String(text ?? ""), options.nestDepth ?? 0);
+  const parser = new Parser(String(text ?? ""), options);
   return parser.parseDocument();
 }
 
 class Parser {
-  constructor(text, nestDepth) {
+  constructor(text, options = {}) {
     this.text = text;
     this.n = text.length;
     this.i = 0;
-    this.nestDepth = nestDepth;
+    this.nestDepth = options.nestDepth ?? 0;
+    this.allowNest = options.nest !== false;
     this.stopped = false;
   }
 
@@ -383,12 +384,12 @@ class Parser {
   }
 
   maybeNest(node) {
-    if (this.nestDepth >= NEST_LIMIT) return;
+    if (!this.allowNest || this.nestDepth >= NEST_LIMIT) return;
 
     const trimmed = node.value.trim();
     if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return;
 
-    const nested = parse(node.value, { nestDepth: this.nestDepth + 1 });
+    const nested = parse(node.value, { nestDepth: this.nestDepth + 1, nest: true });
 
     if (!isUsefulNest(nested)) return;
 

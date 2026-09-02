@@ -30,6 +30,11 @@ function eq(a, b, msg) {
 }
 
 {
+  const n = parse('{"this-is-json": "{\\"a\\": 3}"}', { nest: false });
+  eq(n.entries[0].value.nested, undefined, "nest disabled");
+}
+
+{
   const n = parse("// hi\ntrue\n/* c */\nfalse\n");
   eq(n.type, "doc", "jsonl doc");
   eq(n.items.length, 2, "two values");

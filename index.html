@@ -25,7 +25,7 @@
         <p id="status" class="status" hidden></p>
 
         <div class="actions">
-          <button type="button" id="upload-btn">Upload</button>
+          <button type="button" id="upload-btn">Upload file</button>
           <button type="button" id="clear-btn">Clear</button>
           <button type="button" id="expand-btn" disabled>Expand all</button>
           <button type="button" id="collapse-btn" disabled>Collapse all</button>
@@ -39,8 +39,15 @@
           accept=".json,.jsonl,.jsonc,.txt,application/json,text/plain"
         />
 
-        <div class="theme-row">
-          <button type="button" id="theme-btn" aria-pressed="false">Dark theme</button>
+        <label class="check">
+          <input type="checkbox" id="nest-toggle" checked />
+          Parse nested JSON
+        </label>
+
+        <div class="theme-row" role="radiogroup" aria-label="Theme">
+          <button type="button" data-theme="light" aria-pressed="true">Light</button>
+          <button type="button" data-theme="blue" aria-pressed="false">Blue</button>
+          <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
         </div>
       </aside>
 
