@@ -42,14 +42,20 @@
           accept=".json,.jsonl,.jsonc,.txt,application/json,text/plain"
         />
 
-        <label class="check">
-          <input type="checkbox" id="nest-toggle" checked />
-          Parse nested JSON
-        </label>
+        <div class="checks">
+          <label class="check">
+            <input type="checkbox" id="nest-toggle" checked />
+            Parse nested JSON
+          </label>
+          <label class="check">
+            <input type="checkbox" id="wrap-toggle" checked />
+            Word wrap
+          </label>
+        </div>
 
         <div class="theme-row" role="radiogroup" aria-label="Theme">
           <button type="button" data-theme="light" aria-pressed="true">Light</button>
-          <button type="button" data-theme="blue" aria-pressed="false">Blue</button>
+          <button type="button" data-theme="default" aria-pressed="false">Default</button>
           <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
         </div>
       </aside>

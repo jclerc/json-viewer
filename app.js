@@ -3,7 +3,8 @@ import { parse, countValues, isEmptyAst } from "./parser.js";
 const LS_TEXT = "json-viewer.text";
 const LS_THEME = "json-viewer.theme";
 const LS_NEST = "json-viewer.nest";
-const THEMES = ["light", "blue", "dark"];
+const LS_WRAP = "json-viewer.wrap";
+const THEMES = ["light", "default", "dark"];
 
 const source = document.querySelector("#source");
 const viewer = document.querySelector("#viewer");
@@ -18,6 +19,7 @@ const expandBtn = document.querySelector("#expand-btn");
 const collapseBtn = document.querySelector("#collapse-btn");
 const shareBtn = document.querySelector("#share-btn");
 const nestToggle = document.querySelector("#nest-toggle");
+const wrapToggle = document.querySelector("#wrap-toggle");
 const themeBtns = [...document.querySelectorAll(".theme-row [data-theme]")];
 
 const ctx = { line: 0 };
@@ -31,11 +33,14 @@ init();
 async function init() {
   applyTheme(readTheme());
   nestToggle.checked = localStorage.getItem(LS_NEST) !== "0";
+  wrapToggle.checked = localStorage.getItem(LS_WRAP) !== "0";
+  applyWrap(wrapToggle.checked);
 
   const fromHash = await readHash(location.hash);
   if (fromHash?.text) {
     source.value = fromHash.text;
     localStorage.setItem(LS_TEXT, fromHash.text);
+    if (fromHash.nest != null) applyNest(fromHash.nest);
     pendingSel = fromHash.sel;
   } else {
     const saved = localStorage.getItem(LS_TEXT);
@@ -57,6 +62,7 @@ async function init() {
   });
   copyBtn.addEventListener("click", copyShare);
   nestToggle.addEventListener("change", onNestToggle);
+  wrapToggle.addEventListener("change", onWrapToggle);
   themeBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       localStorage.setItem(LS_THEME, btn.dataset.theme);
@@ -72,11 +78,25 @@ async function init() {
 }
 
 function onNestToggle() {
-  localStorage.setItem(LS_NEST, nestToggle.checked ? "1" : "0");
+  applyNest(nestToggle.checked);
   lineSel = null;
   lastClicked = null;
   pendingSel = null;
   render();
+}
+
+function applyNest(on) {
+  nestToggle.checked = on;
+  localStorage.setItem(LS_NEST, on ? "1" : "0");
+}
+
+function onWrapToggle() {
+  localStorage.setItem(LS_WRAP, wrapToggle.checked ? "1" : "0");
+  applyWrap(wrapToggle.checked);
+}
+
+function applyWrap(on) {
+  viewer.classList.toggle("no-wrap", !on);
 }
 
 function onSourceInput() {
@@ -108,9 +128,18 @@ function clearAll() {
 async function onHashChange() {
   const fromHash = await readHash(location.hash);
   if (!fromHash) return;
+
+  let needRender = false;
+  if (fromHash.nest != null && nestToggle.checked !== fromHash.nest) {
+    applyNest(fromHash.nest);
+    needRender = true;
+  }
   if (fromHash.text !== source.value) {
     source.value = fromHash.text;
     localStorage.setItem(LS_TEXT, fromHash.text);
+    needRender = true;
+  }
+  if (needRender) {
     pendingSel = fromHash.sel;
     render();
     return;
@@ -601,8 +630,9 @@ async function buildHash(text, spec) {
   } else {
     body = bytesToB64(new TextEncoder().encode(text));
   }
-  if (!spec) return body;
-  return `${body}|${formatSpec(spec)}`;
+  const extras = [nestToggle.checked ? "n1" : "n0"];
+  if (spec) extras.push(formatSpec(spec));
+  return `${body}|${extras.join("|")}`;
 }
 
 function formatSpec(spec) {
@@ -624,12 +654,18 @@ async function readHash(hash) {
 
   const bar = raw.indexOf("|");
   const b64 = bar === -1 ? raw : raw.slice(0, bar);
-  const spec = bar === -1 ? "" : raw.slice(bar + 1);
+  const rest = bar === -1 ? "" : raw.slice(bar + 1);
 
   try {
     const bytes = b64ToBytes(b64);
     const text = gzipped ? await gunzipBytes(bytes) : new TextDecoder().decode(bytes);
-    return { text, sel: parseSpec(spec) };
+    let nest = null;
+    let selRaw = "";
+    for (const part of rest ? rest.split("|") : []) {
+      if (part === "n0" || part === "n1") nest = part === "n1";
+      else if (part) selRaw = part;
+    }
+    return { text, sel: parseSpec(selRaw), nest };
   } catch {
     return null;
   }
@@ -707,6 +743,10 @@ async function copyShare() {
 
 function readTheme() {
   const stored = localStorage.getItem(LS_THEME);
+  if (stored === "blue") {
+    localStorage.setItem(LS_THEME, "default");
+    return "default";
+  }
   if (THEMES.includes(stored)) return stored;
   return "light";
 }
