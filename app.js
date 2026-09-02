@@ -28,11 +28,11 @@ let lastTipSpec = null;
 
 init();
 
-function init() {
+async function init() {
   applyTheme(readTheme());
   nestToggle.checked = localStorage.getItem(LS_NEST) !== "0";
 
-  const fromHash = readHash(location.hash);
+  const fromHash = await readHash(location.hash);
   if (fromHash?.text) {
     source.value = fromHash.text;
     localStorage.setItem(LS_TEXT, fromHash.text);
@@ -105,8 +105,8 @@ function clearAll() {
   render();
 }
 
-function onHashChange() {
-  const fromHash = readHash(location.hash);
+async function onHashChange() {
+  const fromHash = await readHash(location.hash);
   if (!fromHash) return;
   if (fromHash.text !== source.value) {
     source.value = fromHash.text;
@@ -569,8 +569,8 @@ function unwrapMarks() {
   viewer.normalize();
 }
 
-function openShare(spec) {
-  const hash = buildHash(source.value, spec);
+async function openShare(spec) {
+  const hash = await buildHash(source.value, spec);
   const url = `${location.origin}${location.pathname}${location.search}#${hash}`;
   shareUrl.value = url;
 
@@ -592,8 +592,13 @@ function openShare(spec) {
   shareUrl.select();
 }
 
-function buildHash(text, spec) {
-  const body = encodeB64(text);
+async function buildHash(text, spec) {
+  let body;
+  if (text.length > 1000) {
+    body = `gz|${bytesToB64(await gzipBytes(new TextEncoder().encode(text)))}`;
+  } else {
+    body = bytesToB64(new TextEncoder().encode(text));
+  }
   if (!spec) return body;
   return `${body}|${formatSpec(spec)}`;
 }
@@ -608,14 +613,21 @@ function formatSpec(spec) {
   return `L${spec.fromLine}:${spec.fromCol}-${spec.toLine}:${spec.toCol}`;
 }
 
-function readHash(hash) {
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+async function readHash(hash) {
+  let raw = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!raw) return null;
+
+  const gzipped = raw.startsWith("gz|");
+  if (gzipped) raw = raw.slice(3);
+
   const bar = raw.indexOf("|");
   const b64 = bar === -1 ? raw : raw.slice(0, bar);
   const spec = bar === -1 ? "" : raw.slice(bar + 1);
+
   try {
-    return { text: decodeB64(b64), sel: parseSpec(spec) };
+    const bytes = b64ToBytes(b64);
+    const text = gzipped ? await gunzipBytes(bytes) : new TextDecoder().decode(bytes);
+    return { text, sel: parseSpec(spec) };
   } catch {
     return null;
   }
@@ -655,18 +667,26 @@ function parseSpec(spec) {
   return null;
 }
 
-function encodeB64(str) {
-  const bytes = new TextEncoder().encode(str);
+function bytesToB64(bytes) {
   let bin = "";
   for (const byte of bytes) bin += String.fromCharCode(byte);
   return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-function decodeB64(b64) {
+function b64ToBytes(b64) {
   const pad = "=".repeat((4 - (b64.length % 4)) % 4);
   const bin = atob(b64.replaceAll("-", "+").replaceAll("_", "/") + pad);
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+async function gzipBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function gunzipBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new TextDecoder().decode(await new Response(stream).arrayBuffer());
 }
 
 async function copyShare() {
