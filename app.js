@@ -573,6 +573,8 @@ async function openShare(spec) {
   const hash = await buildHash(source.value, spec);
   const url = `${location.origin}${location.pathname}${location.search}#${hash}`;
   shareUrl.value = url;
+  document.querySelector("#share-label-text").textContent =
+    `Link (${url.length} character${url.length === 1 ? "" : "s"})`;
 
   shareWarn.hidden = true;
   shareWarn.className = "warn";
