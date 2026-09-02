@@ -163,6 +163,15 @@ function render() {
 }
 
 function renderValue(node, depth, prefix, parent, comma) {
+  for (const comment of node.leadingComments || []) {
+    renderComment(comment, depth, parent);
+  }
+
+  if (node.type === "comment") {
+    renderComment(node, depth, parent);
+    return;
+  }
+
   if (node.type === "doc") {
     for (const item of node.items) {
       renderValue(item, depth, [], parent, false);
@@ -175,11 +184,13 @@ function renderValue(node, depth, prefix, parent, comma) {
 
   if (node.type === "string" && node.nested) {
     renderValue(node.nested, depth, prefix, parent, comma);
+    renderAfterComments(node, depth, parent);
     return;
   }
 
   if (node.type === "object" || node.type === "array") {
     renderCompound(node, depth, prefix, parent, comma);
+    renderAfterComments(node, depth, parent);
     return;
   }
 
@@ -187,6 +198,7 @@ function renderValue(node, depth, prefix, parent, comma) {
   row.content.append(...prefix, ...primitive(node));
   if (comma) row.content.append(tok("p", ","));
   if (node.truncated || node.type === "missing") row.content.append(truncMark());
+  renderAfterComments(node, depth, parent);
 }
 
 function renderCompound(node, depth, prefix, parent, comma) {
@@ -208,7 +220,8 @@ function renderCompound(node, depth, prefix, parent, comma) {
   opener.foldSlot.append(fold);
   opener.content.append(...prefix, tok("p", open));
   const preview = el("span", { class: "preview" });
-  preview.append(el("span", { class: "ellipsis" }, `…${kids.length}`), tok("p", close + (comma ? "," : "")));
+  const ellipsis = el("span", { class: "ellipsis" }, `…${kids.length}`);
+  preview.append(ellipsis, tok("p", close + (comma ? "," : "")));
   opener.content.append(preview);
 
   const children = el("div", { class: "children" });
@@ -219,6 +232,10 @@ function renderCompound(node, depth, prefix, parent, comma) {
     if (isObj) renderEntry(kid, depth + 1, children, needComma);
     else renderValue(kid, depth + 1, [], children, needComma);
   });
+
+  for (const comment of node.trailingComments || []) {
+    renderComment(comment, depth + 1, children);
+  }
 
   if (node.truncated && !children.querySelector(".trunc") && !opener.content.querySelector(".trunc")) {
     const target =
@@ -239,19 +256,41 @@ function renderCompound(node, depth, prefix, parent, comma) {
     e.stopPropagation();
     toggleBlock(block);
   });
+  ellipsis.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (block.classList.contains("is-collapsed")) toggleBlock(block);
+  });
 }
 
 function renderEntry(entry, depth, parent, comma) {
+  for (const comment of entry.comments || []) {
+    renderComment(comment, depth, parent);
+  }
+
   const nested = Boolean(entry.value?.nested);
   const prefix = keyPrefix(entry.key, nested);
 
   if (entry.keyTruncated) {
     const row = newLine(depth, parent);
     row.content.append(...prefix, truncMark());
+    renderAfterComments(entry, depth, parent);
     return;
   }
 
   renderValue(entry.value, depth, prefix, parent, comma);
+  renderAfterComments(entry, depth, parent);
+}
+
+function renderComment(node, depth, parent) {
+  const row = newLine(depth, parent);
+  const text = node.kind === "block" ? `/* ${node.text} */` : `// ${node.text}`;
+  row.content.append(tok("c", text));
+}
+
+function renderAfterComments(node, depth, parent) {
+  for (const comment of node.afterComments || []) {
+    renderComment(comment, depth, parent);
+  }
 }
 
 function primitive(node) {
@@ -277,12 +316,9 @@ function quoted(kind, text) {
 
 function keyPrefix(key, nested) {
   if (nested) {
-    const wrap = el("span", {
-      class: "nested-key",
-      title: "Parsed from a JSON string",
-    });
-    wrap.append(tok("qt", '"'), tok("k", key), tok("qt", '"'));
-    return [wrap, tok("p", ": ")];
+    const k = tok("k nested-key", key);
+    k.title = "Parsed from a JSON string";
+    return [tok("qt", '"'), k, tok("qt", '"'), tok("p", ": ")];
   }
   return [...quoted("k", key), tok("p", ": ")];
 }

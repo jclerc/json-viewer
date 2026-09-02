@@ -313,6 +313,11 @@ button:focus-visible {
   color: var(--count);
 }
 
+.block.is-collapsed > .line .preview .ellipsis {
+  cursor: pointer;
+  user-select: none;
+}
+
 .block.is-collapsed > .line .preview {
   display: inline;
 }
@@ -354,6 +359,11 @@ button:focus-visible {
 
 .p {
   color: var(--punct);
+}
+
+.c {
+  color: var(--fg-dim);
+  font-style: italic;
 }
 
 .trunc {

@@ -23,46 +23,56 @@ class Parser {
     return this.text[this.i + offset];
   }
 
-  skipTrivia() {
+  skipWs() {
     while (!this.eof()) {
       const c = this.peek();
-
-      if (c === " " || c === "\t" || c === "\n" || c === "\r") {
-        this.i += 1;
-        continue;
-      }
-
-      if (c === "/" && this.peek(1) === "/") {
-        this.i += 2;
-        while (!this.eof() && this.peek() !== "\n") this.i += 1;
-        continue;
-      }
-
-      if (c === "/" && this.peek(1) === "*") {
-        this.i += 2;
-        while (!this.eof() && !(this.peek() === "*" && this.peek(1) === "/")) {
-          this.i += 1;
-        }
-        if (this.eof()) {
-          this.stopped = true;
-        } else {
-          this.i += 2;
-        }
-        continue;
-      }
-
-      break;
+      if (c === " " || c === "\t" || c === "\n" || c === "\r") this.i += 1;
+      else break;
     }
+  }
+
+  readComment() {
+    if (this.peek() === "/" && this.peek(1) === "/") {
+      this.i += 2;
+      const start = this.i;
+      while (!this.eof() && this.peek() !== "\n") this.i += 1;
+      return { type: "comment", kind: "line", text: this.text.slice(start, this.i).trim() };
+    }
+
+    if (this.peek() === "/" && this.peek(1) === "*") {
+      this.i += 2;
+      const start = this.i;
+      while (!this.eof() && !(this.peek() === "*" && this.peek(1) === "/")) this.i += 1;
+      const text = this.text.slice(start, this.i).trim();
+      if (this.eof()) this.stopped = true;
+      else this.i += 2;
+      return { type: "comment", kind: "block", text };
+    }
+
+    return null;
+  }
+
+  takeComments() {
+    const comments = [];
+    while (true) {
+      this.skipWs();
+      const comment = this.readComment();
+      if (!comment) break;
+      comments.push(comment);
+    }
+    this.skipWs();
+    return comments;
   }
 
   parseDocument() {
     const items = [];
-    this.skipTrivia();
 
     while (!this.eof()) {
+      items.push(...this.takeComments());
+      if (this.eof()) break;
+
       const start = this.i;
       items.push(this.parseValue());
-      this.skipTrivia();
 
       if (this.i === start) {
         this.i += 1;
@@ -84,7 +94,7 @@ class Parser {
   }
 
   parseValue() {
-    this.skipTrivia();
+    this.skipWs();
 
     if (this.eof()) {
       this.stopped = true;
@@ -109,17 +119,20 @@ class Parser {
   parseObject() {
     this.i += 1;
     const entries = [];
+    const trailingComments = [];
     let truncated = false;
 
     while (true) {
-      this.skipTrivia();
+      const comments = this.takeComments();
 
       if (this.eof()) {
         truncated = true;
+        trailingComments.push(...comments);
         break;
       }
 
       if (this.peek() === "}") {
+        trailingComments.push(...comments);
         this.i += 1;
         break;
       }
@@ -132,17 +145,18 @@ class Parser {
       if (this.peek() !== '"') {
         truncated = true;
         this.stopped = true;
+        trailingComments.push(...comments);
         break;
       }
 
       const keyNode = this.parseString(false);
-      this.skipTrivia();
+      this.skipWs();
 
       let value;
 
       if (this.peek() === ":") {
         this.i += 1;
-        this.skipTrivia();
+        comments.push(...this.takeComments());
         value = this.eof()
           ? ((this.stopped = true), { type: "missing", truncated: true })
           : this.parseValue();
@@ -156,11 +170,13 @@ class Parser {
         key: keyNode.value,
         keyTruncated: Boolean(keyNode.truncated),
         value,
+        comments,
       });
 
       if (keyNode.truncated || value.truncated) truncated = true;
 
-      this.skipTrivia();
+      const after = this.takeComments();
+      if (after.length) entries[entries.length - 1].afterComments = after;
 
       if (this.peek() === ",") {
         this.i += 1;
@@ -183,23 +199,26 @@ class Parser {
       break;
     }
 
-    return { type: "object", entries, truncated };
+    return { type: "object", entries, trailingComments, truncated };
   }
 
   parseArray() {
     this.i += 1;
     const items = [];
+    const trailingComments = [];
     let truncated = false;
 
     while (true) {
-      this.skipTrivia();
+      const comments = this.takeComments();
 
       if (this.eof()) {
         truncated = true;
+        trailingComments.push(...comments);
         break;
       }
 
       if (this.peek() === "]") {
+        trailingComments.push(...comments);
         this.i += 1;
         break;
       }
@@ -210,10 +229,12 @@ class Parser {
       }
 
       const value = this.parseValue();
+      if (comments.length) value.leadingComments = comments;
       items.push(value);
       if (value.truncated) truncated = true;
 
-      this.skipTrivia();
+      const after = this.takeComments();
+      if (after.length) value.afterComments = after;
 
       if (this.peek() === ",") {
         this.i += 1;
@@ -236,7 +257,7 @@ class Parser {
       break;
     }
 
-    return { type: "array", items, truncated };
+    return { type: "array", items, trailingComments, truncated };
   }
 
   parseString(allowNest) {
@@ -410,8 +431,10 @@ function isUsefulNest(node) {
 
 export function countValues(node) {
   if (!node) return 0;
-  if (node.type === "doc") return node.items.filter((n) => n.type !== "missing").length;
-  if (node.type === "missing") return 0;
+  if (node.type === "doc") {
+    return node.items.filter((n) => n.type !== "missing" && n.type !== "comment").length;
+  }
+  if (node.type === "missing" || node.type === "comment") return 0;
   return 1;
 }
 

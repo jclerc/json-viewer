@@ -1,5 +1,11 @@
-# JSON Viewer
+# JSON Viewer ✨
 
-Paste or upload JSON, JSONL, or JSONC. Incomplete input still renders. Share copies a link with the document in the URL hash.
+A small, zero-dependency viewer for JSON, JSONL, and JSONC.
 
-Publish by enabling GitHub Pages on the repository root.
+**[Open it →](https://jclerc.github.io/json-viewer/)**
+
+- 🎨 Syntax colors, expand / collapse, Light / Blue / Dark
+- 🧩 Nested JSON strings parsed in place (can be turned off)
+- 🩹 Incomplete JSON still renders, with a mark where it stopped
+- 🔗 Share a link (document + line selection live in the URL hash)
+- 💾 Paste, upload, or pick up where you left off (saved locally)

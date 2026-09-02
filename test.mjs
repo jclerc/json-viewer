@@ -37,9 +37,12 @@ function eq(a, b, msg) {
 {
   const n = parse("// hi\ntrue\n/* c */\nfalse\n");
   eq(n.type, "doc", "jsonl doc");
-  eq(n.items.length, 2, "two values");
-  eq(n.items[0].value, true, "true");
-  eq(n.items[1].value, false, "false");
+  eq(n.items[0].type, "comment", "leading comment");
+  eq(n.items[0].text, "hi", "comment text");
+  const values = n.items.filter((x) => x.type !== "comment");
+  eq(values.length, 2, "two values");
+  eq(values[0].value, true, "true");
+  eq(values[1].value, false, "false");
 }
 
 {
@@ -72,11 +75,14 @@ function eq(a, b, msg) {
   const n = parse(text);
   eq(n.type, "doc", "example is jsonl");
   eq(countValues(n), 2, "two objects");
+  const objs = n.items.filter((x) => x.type === "object");
+  eq(objs.length, 2, "two objects");
+  eq(n.items[0].type, "comment", "example leading comment");
   eq(n.truncated, true, "example truncated");
-  eq(n.items[0].truncated, false, "first object complete");
-  eq(n.items[1].truncated, true, "second object incomplete");
+  eq(objs[0].truncated, false, "first object complete");
+  eq(objs[1].truncated, true, "second object incomplete");
 
-  const details = n.items[0].entries.find((e) => e.key === "details");
+  const details = objs[0].entries.find((e) => e.key === "details");
   eq(details.value.type, "string", "details is string");
   eq(details.value.nested?.type, "array", "details nested array");
   eq(details.value.nested.items[0].type, "object", "nested error object");
