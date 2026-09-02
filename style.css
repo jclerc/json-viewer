@@ -116,6 +116,19 @@ body {
   color: var(--fg-strong);
 }
 
+.source-link {
+  margin-left: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--fg-dim);
+  text-decoration: none;
+}
+
+.source-link:hover {
+  color: var(--key);
+  text-decoration: underline;
+}
+
 .brand p {
   margin: 0.2rem 0 0;
   color: var(--fg-dim);
