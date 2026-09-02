@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JSON Viewer</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <header class="brand">
+          <h1>JSON Viewer</h1>
+          <p>Paste or upload JSON, JSONL, or JSONC.</p>
+        </header>
+
+        <textarea
+          id="source"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          placeholder='{"hello": "world"}'
+        ></textarea>
+
+        <p id="status" class="status" hidden></p>
+
+        <div class="actions">
+          <button type="button" id="upload-btn">Upload</button>
+          <button type="button" id="clear-btn">Clear</button>
+          <button type="button" id="expand-btn" disabled>Expand all</button>
+          <button type="button" id="collapse-btn" disabled>Collapse all</button>
+          <button type="button" id="share-btn" class="wide" disabled>Share link</button>
+        </div>
+
+        <input
+          id="file"
+          type="file"
+          hidden
+          accept=".json,.jsonl,.jsonc,.txt,application/json,text/plain"
+        />
+
+        <div class="theme-row">
+          <button type="button" id="theme-btn" aria-pressed="false">Dark theme</button>
+        </div>
+      </aside>
+
+      <main class="stage">
+        <div id="viewer" class="viewer" aria-label="JSON tree">
+          <p class="empty">Paste JSON on the left to view it here.</p>
+        </div>
+      </main>
+    </div>
+
+    <div id="sel-tip" class="sel-tip" hidden>
+      <button type="button" id="sel-share-btn">Share this selection</button>
+    </div>
+
+    <dialog id="share-dialog">
+      <form method="dialog" class="share-form">
+        <h2>Share</h2>
+        <label class="share-label">
+          Link
+          <input id="share-url" readonly />
+        </label>
+        <p id="share-warn" class="warn" hidden></p>
+        <div class="dlg-actions">
+          <button type="button" id="copy-btn">Copy</button>
+          <button value="close">Close</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
