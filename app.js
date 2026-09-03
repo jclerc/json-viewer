@@ -50,6 +50,7 @@ async function init() {
   render();
 
   source.addEventListener("input", onSourceInput);
+  document.querySelector("#example-link").addEventListener("click", onExample);
   document.querySelector("#upload-btn").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", onFile);
   document.querySelector("#clear-btn").addEventListener("click", clearAll);
@@ -61,6 +62,17 @@ async function init() {
     openShare(lastTipSpec);
   });
   copyBtn.addEventListener("click", copyShare);
+  shareDialog.addEventListener("click", (e) => {
+    const r = shareDialog.getBoundingClientRect();
+    if (
+      e.clientX < r.left ||
+      e.clientX > r.right ||
+      e.clientY < r.top ||
+      e.clientY > r.bottom
+    ) {
+      shareDialog.close();
+    }
+  });
   nestToggle.addEventListener("change", onNestToggle);
   wrapToggle.addEventListener("change", onWrapToggle);
   themeBtns.forEach((btn) => {
@@ -115,6 +127,14 @@ async function onFile() {
   onSourceInput();
 }
 
+async function onExample(e) {
+  e.preventDefault();
+  const res = await fetch(e.currentTarget.href);
+  if (!res.ok) return;
+  source.value = await res.text();
+  onSourceInput();
+}
+
 function clearAll() {
   source.value = "";
   localStorage.removeItem(LS_TEXT);
@@ -147,6 +167,12 @@ async function onHashChange() {
   if (fromHash.sel) applySelection(fromHash.sel);
 }
 
+function sourceSize(text) {
+  const chars = text.length;
+  const lines = text.split(/\r\n|\n|\r/).length;
+  return `${chars} char${chars === 1 ? "" : "s"} · ${lines} line${lines === 1 ? "" : "s"}`;
+}
+
 function render() {
   hideTip();
   ctx.line = 0;
@@ -167,7 +193,7 @@ function render() {
   if (!has) {
     statusEl.hidden = false;
     statusEl.className = "status is-trunc";
-    statusEl.textContent = "Nothing could be parsed.";
+    statusEl.textContent = `${sourceSize(text)} · Nothing could be parsed.`;
     viewer.replaceChildren(el("p", { class: "empty" }, "Nothing could be parsed."));
     return;
   }
@@ -176,7 +202,7 @@ function render() {
   const trunc = Boolean(ast.truncated);
   statusEl.hidden = false;
   statusEl.className = trunc ? "status is-trunc" : "status";
-  statusEl.textContent = `${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}`;
+  statusEl.textContent = `${sourceSize(text)} · ${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}`;
 
   const root = document.createDocumentFragment();
   renderValue(ast, 0, [], root, false);
@@ -617,7 +643,7 @@ async function openShare(spec) {
     shareWarn.textContent = "This link is long and may not work in all browsers.";
   }
 
-  copyBtn.textContent = "Copy";
+  setCopyLabel("Copy");
   shareDialog.showModal();
   shareUrl.focus();
   shareUrl.select();
@@ -735,10 +761,15 @@ async function copyShare() {
     shareUrl.select();
     document.execCommand("copy");
   }
-  copyBtn.textContent = "Copied";
+  setCopyLabel("Copied");
   setTimeout(() => {
-    copyBtn.textContent = "Copy";
+    setCopyLabel("Copy");
   }, 1400);
+}
+
+function setCopyLabel(text) {
+  const label = copyBtn.querySelector("[data-label]");
+  if (label) label.textContent = text;
 }
 
 function readTheme() {
@@ -748,11 +779,11 @@ function readTheme() {
     return "default";
   }
   if (THEMES.includes(stored)) return stored;
-  return "light";
+  return "default";
 }
 
 function applyTheme(theme) {
-  const next = THEMES.includes(theme) ? theme : "light";
+  const next = THEMES.includes(theme) ? theme : "default";
   document.documentElement.dataset.theme = next;
   themeBtns.forEach((btn) => {
     btn.classList.toggle("is-on", btn.dataset.theme === next);

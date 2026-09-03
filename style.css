@@ -135,6 +135,16 @@ body {
   font-size: 0.82rem;
 }
 
+.brand p a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.brand p a:hover {
+  color: var(--key);
+}
+
 #source {
   flex: 1;
   width: 100%;
@@ -153,16 +163,6 @@ body {
   outline-offset: 1px;
 }
 
-.status {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--fg-dim);
-}
-
-.status.is-trunc {
-  color: var(--trunc-fg);
-}
-
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -171,6 +171,31 @@ body {
 
 .actions .wide {
   grid-column: 1 / -1;
+}
+
+.glyphs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.glyph {
+  width: 0.95em;
+  height: 0.95em;
+  flex: none;
+  pointer-events: none;
+}
+
+.actions button,
+.theme-row button,
+.dlg-actions button,
+.sel-tip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  white-space: nowrap;
 }
 
 button {
@@ -195,6 +220,18 @@ button:disabled {
 button:focus-visible {
   outline: 2px solid var(--key);
   outline-offset: 1px;
+}
+
+button.primary {
+  background: var(--fg-strong);
+  color: var(--bg);
+  border-color: var(--fg-strong);
+  font-weight: 650;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--fg);
+  border-color: var(--fg);
 }
 
 .theme-row {
@@ -229,6 +266,16 @@ button:focus-visible {
 .check input {
   margin: 0;
   accent-color: var(--key);
+}
+
+.status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+
+.status.is-trunc {
+  color: var(--trunc-fg);
 }
 
 .stage {
