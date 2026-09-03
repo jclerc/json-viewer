@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { parse, countValues } from "./parser.js";
+import { parse, countValues, astToValues } from "./parser.js";
+import { applyJq, parseJq } from "./jq.js";
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -78,14 +79,60 @@ function eq(a, b, msg) {
   const objs = n.items.filter((x) => x.type === "object");
   eq(objs.length, 2, "two objects");
   eq(n.items[0].type, "comment", "example leading comment");
-  eq(n.truncated, true, "example truncated");
+  eq(n.truncated, false, "example complete");
   eq(objs[0].truncated, false, "first object complete");
-  eq(objs[1].truncated, true, "second object incomplete");
+  eq(objs[1].truncated, false, "second object complete");
 
-  const details = objs[0].entries.find((e) => e.key === "details");
-  eq(details.value.type, "string", "details is string");
-  eq(details.value.nested?.type, "array", "details nested array");
-  eq(details.value.nested.items[0].type, "object", "nested error object");
+  const nested = objs[0].entries.find((e) => e.key === "nested");
+  eq(nested.value.type, "string", "nested is string");
+  eq(nested.value.nested?.type, "object", "nested object");
+  eq(nested.value.nested.entries[0].key, "ok", "nested key");
+}
+
+{
+  const values = astToValues(parse('{"a": 1}\n{"a": 2}'));
+  eq(values, [{ a: 1 }, { a: 2 }], "jsonl to values");
+}
+
+function jq(data, filter) {
+  const result = applyJq([data], filter);
+  if (!result.ok) throw new Error(`${filter}\n  ${result.error}`);
+  return result.values;
+}
+
+{
+  parseJq(".foo.bar");
+  parseJq(".[] | select(.n == 2)");
+  parseJq("{k: .a, b}");
+  eq(jq({ a: { b: 3 } }, ".a.b"), [3], ".a.b");
+  eq(jq({ a: { b: 3 } }, ".a | .b"), [3], "pipe");
+  eq(jq({ list: [1, 2, 3] }, ".list[1]"), [2], "index");
+  eq(jq({ list: [1, 2, 3] }, ".list[-1]"), [3], "neg index");
+  eq(jq({ list: [1, 2, 3] }, ".list[]"), [1, 2, 3], "iterate");
+  eq(jq({ list: [1, 2, 3] }, ".list[0:2]"), [[1, 2]], "slice");
+  eq(jq([{ n: 1 }, { n: 2 }, { n: 3 }], ".[] | select(.n >= 2)"), [{ n: 2 }, { n: 3 }], "select");
+  eq(jq({ a: 1, b: 2 }, "keys"), [["a", "b"]], "keys");
+  eq(jq([10, 20], "length"), [2], "length");
+  eq(jq({ a: 1, b: 2 }, "map_values(. + 1)"), [{ a: 2, b: 3 }], "map_values");
+  eq(jq([{ id: 1 }, { id: 2 }], "map(.id)"), [[1, 2]], "map");
+  eq(jq("{\"n\":1}", "fromjson"), [{ n: 1 }], "fromjson");
+  eq(jq({ n: 1 }, ".m // 5"), [5], "alt");
+  eq(jq({ a: 1, b: 2 }, "{a, c: .b}"), [{ a: 1, c: 2 }], "object ctor");
+  eq(jq({ a: 1 }, "if .a == 1 then \"yes\" else \"no\" end"), ["yes"], "if");
+  eq(jq([1, 2, 3], "add"), [6], "add");
+  eq(jq({ missing: 1 }, ".nope?"), [null], "optional field is null");
+  eq(jq(null, ".[]?"), [], "optional iterate");
+  eq(jq({ a: "x", b: "y" }, ".a, .b"), ["x", "y"], "comma");
+  eq(jq("hello", "startswith(\"he\")"), [true], "startswith");
+  const bad = applyJq([{ a: 1 }], ".[");
+  eq(bad.ok, false, "bad filter");
+}
+
+{
+  const values = astToValues(parse(readFileSync(new URL("./example.json", import.meta.url), "utf8")));
+  const jsonl = applyJq(values, ".n");
+  eq(jsonl.ok, true, "jq jsonl ok");
+  eq(jsonl.values[1], 2, "jq over jsonl .n");
 }
 
 console.log("ok");

@@ -441,3 +441,45 @@ export function countValues(node) {
 export function isEmptyAst(node) {
   return !node || node.type === "missing";
 }
+
+export function astToValues(node) {
+  if (!node || node.type === "missing") return [];
+  if (node.type === "comment") return [];
+  if (node.type === "doc") {
+    const values = [];
+    for (const item of node.items) {
+      if (item.type === "comment" || item.type === "missing") continue;
+      values.push(astToValue(item));
+    }
+    return values;
+  }
+  return [astToValue(node)];
+}
+
+function astToValue(node) {
+  if (!node) return null;
+  switch (node.type) {
+    case "object": {
+      const out = {};
+      for (const entry of node.entries) {
+        if (entry.keyTruncated) continue;
+        out[entry.key] = astToValue(entry.value);
+      }
+      return out;
+    }
+    case "array":
+      return node.items.map((item) => astToValue(item));
+    case "string":
+      return node.value;
+    case "number":
+      return node.value;
+    case "boolean":
+      return node.value;
+    case "null":
+    case "missing":
+    case "comment":
+      return null;
+    default:
+      return null;
+  }
+}

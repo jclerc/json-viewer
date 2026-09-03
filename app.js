@@ -1,9 +1,12 @@
-import { parse, countValues, isEmptyAst } from "./parser.js";
+import { parse, countValues, isEmptyAst, astToValues } from "./parser.js";
+import { applyJq } from "./jq.js";
 
 const LS_TEXT = "json-viewer.text";
 const LS_THEME = "json-viewer.theme";
 const LS_NEST = "json-viewer.nest";
 const LS_WRAP = "json-viewer.wrap";
+const LS_REGEX = "json-viewer.regex";
+const LS_JQ = "json-viewer.jq";
 const THEMES = ["light", "default", "dark"];
 
 const source = document.querySelector("#source");
@@ -18,8 +21,14 @@ const selTip = document.querySelector("#sel-tip");
 const expandBtn = document.querySelector("#expand-btn");
 const collapseBtn = document.querySelector("#collapse-btn");
 const shareBtn = document.querySelector("#share-btn");
+const fullscreenBtn = document.querySelector("#fullscreen-btn");
+const searchInput = document.querySelector("#search-input");
+const searchCount = document.querySelector("#search-count");
+const jqInput = document.querySelector("#jq-input");
+const jqMeta = document.querySelector("#jq-meta");
 const nestToggle = document.querySelector("#nest-toggle");
 const wrapToggle = document.querySelector("#wrap-toggle");
+const regexToggle = document.querySelector("#regex-toggle");
 const themeBtns = [...document.querySelectorAll(".theme-row [data-theme]")];
 
 const ctx = { line: 0 };
@@ -27,6 +36,8 @@ let lineSel = null;
 let lastClicked = null;
 let pendingSel = null;
 let lastTipSpec = null;
+let searchHits = [];
+let searchIndex = 0;
 
 init();
 
@@ -34,6 +45,7 @@ async function init() {
   applyTheme(readTheme());
   nestToggle.checked = localStorage.getItem(LS_NEST) !== "0";
   wrapToggle.checked = localStorage.getItem(LS_WRAP) !== "0";
+  regexToggle.checked = localStorage.getItem(LS_REGEX) !== "0";
   applyWrap(wrapToggle.checked);
 
   const fromHash = await readHash(location.hash);
@@ -42,9 +54,12 @@ async function init() {
     localStorage.setItem(LS_TEXT, fromHash.text);
     if (fromHash.nest != null) applyNest(fromHash.nest);
     pendingSel = fromHash.sel;
+    setJq(fromHash.jq ?? "");
   } else {
     const saved = localStorage.getItem(LS_TEXT);
     if (saved) source.value = saved;
+    const savedJq = localStorage.getItem(LS_JQ);
+    if (savedJq) setJq(savedJq);
   }
 
   render();
@@ -56,7 +71,14 @@ async function init() {
   document.querySelector("#clear-btn").addEventListener("click", clearAll);
   expandBtn.addEventListener("click", () => setAllCollapsed(false));
   collapseBtn.addEventListener("click", () => setAllCollapsed(true));
+  fullscreenBtn.addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", syncFullscreenBtn);
+  document.addEventListener("webkitfullscreenchange", syncFullscreenBtn);
   shareBtn.addEventListener("click", () => openShare(currentLineSpec()));
+  searchInput.addEventListener("input", () => applySearch({ reset: true }));
+  searchInput.addEventListener("keydown", onSearchKey);
+  regexToggle.addEventListener("change", onRegexToggle);
+  jqInput.addEventListener("input", onJqInput);
   document.querySelector("#sel-share-btn").addEventListener("click", () => {
     hideTip();
     openShare(lastTipSpec);
@@ -107,8 +129,48 @@ function onWrapToggle() {
   applyWrap(wrapToggle.checked);
 }
 
+function onRegexToggle() {
+  localStorage.setItem(LS_REGEX, regexToggle.checked ? "1" : "0");
+  applySearch({ reset: true });
+}
+
 function applyWrap(on) {
   viewer.classList.toggle("no-wrap", !on);
+}
+
+function setJq(text) {
+  jqInput.value = text;
+  localStorage.setItem(LS_JQ, text);
+}
+
+function onJqInput() {
+  localStorage.setItem(LS_JQ, jqInput.value);
+  lineSel = null;
+  lastClicked = null;
+  pendingSel = null;
+  render();
+}
+
+function toggleFullscreen() {
+  if (fullscreenElement() === viewer) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+    return;
+  }
+  const enter = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
+  if (enter) enter.call(viewer);
+}
+
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement;
+}
+
+function syncFullscreenBtn() {
+  const on = fullscreenElement() === viewer;
+  const label = fullscreenBtn.querySelector("[data-label]");
+  const icon = fullscreenBtn.querySelector("use");
+  if (label) label.textContent = on ? "Exit fullscreen" : "Fullscreen";
+  if (icon) icon.setAttribute("href", on ? "#g-exit-fs" : "#g-fullscreen");
 }
 
 function onSourceInput() {
@@ -154,6 +216,11 @@ async function onHashChange() {
     applyNest(fromHash.nest);
     needRender = true;
   }
+  const hashJq = fromHash.jq ?? "";
+  if (jqInput.value !== hashJq) {
+    setJq(hashJq);
+    needRender = true;
+  }
   if (fromHash.text !== source.value) {
     source.value = fromHash.text;
     localStorage.setItem(LS_TEXT, fromHash.text);
@@ -177,24 +244,60 @@ function render() {
   hideTip();
   ctx.line = 0;
   const text = source.value;
-  const ast = text.trim() ? parse(text, { nest: nestToggle.checked }) : null;
+  const parsed = text.trim() ? parse(text, { nest: nestToggle.checked }) : null;
+  const sourceHas = parsed && !isEmptyAst(parsed);
+
+  let ast = parsed;
+  let jqNote = "";
+  jqMeta.textContent = "";
+  jqMeta.classList.remove("is-error");
+
+  const jqFilter = jqInput.value.trim();
+  if (sourceHas && jqFilter) {
+    const result = applyJq(astToValues(parsed), jqFilter);
+    if (!result.ok) {
+      jqMeta.textContent = result.error;
+      jqMeta.classList.add("is-error");
+    } else if (!result.passthrough) {
+      if (!result.values.length) {
+        jqNote = " · jq: no results";
+        ast = null;
+      } else {
+        const outText = result.values.map((v) => JSON.stringify(v, null, 2)).join("\n");
+        ast = parse(outText, { nest: nestToggle.checked });
+        jqNote = result.values.length === 1 ? " · jq" : ` · jq ×${result.values.length}`;
+      }
+    }
+  }
+
   const has = ast && !isEmptyAst(ast);
 
   expandBtn.disabled = !has;
   collapseBtn.disabled = !has;
-  shareBtn.disabled = !has;
+  shareBtn.disabled = !sourceHas;
+  fullscreenBtn.disabled = !has;
 
   if (!text.trim()) {
     statusEl.hidden = true;
     viewer.replaceChildren(el("p", { class: "empty" }, "Paste JSON on the left to view it here."));
+    clearSearchMarks();
     return;
   }
 
   if (!has) {
     statusEl.hidden = false;
     statusEl.className = "status is-trunc";
-    statusEl.textContent = `${sourceSize(text)} · Nothing could be parsed.`;
-    viewer.replaceChildren(el("p", { class: "empty" }, "Nothing could be parsed."));
+    statusEl.textContent = jqNote
+      ? `${sourceSize(text)}${jqNote}`
+      : `${sourceSize(text)} · Nothing could be parsed.`;
+    viewer.replaceChildren(
+      el(
+        "p",
+        { class: "empty" },
+        jqNote ? "jq produced no results." : "Nothing could be parsed.",
+      ),
+    );
+    clearSearchMarks();
     return;
   }
 
@@ -202,7 +305,7 @@ function render() {
   const trunc = Boolean(ast.truncated);
   statusEl.hidden = false;
   statusEl.className = trunc ? "status is-trunc" : "status";
-  statusEl.textContent = `${sourceSize(text)} · ${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}`;
+  statusEl.textContent = `${sourceSize(text)} · ${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}${jqNote}`;
 
   const root = document.createDocumentFragment();
   renderValue(ast, 0, [], root, false);
@@ -211,9 +314,15 @@ function render() {
   if (pendingSel) {
     const sel = pendingSel;
     pendingSel = null;
-    requestAnimationFrame(() => applySelection(sel));
+    requestAnimationFrame(() => {
+      applySelection(sel);
+      applySearch({ reset: true });
+    });
   } else if (lineSel) {
     paintLineSel();
+    applySearch({ reset: false });
+  } else {
+    applySearch({ reset: false });
   }
 }
 
@@ -391,7 +500,7 @@ function newLine(depth, parent) {
   gutter.textContent = String(n);
   const foldSlot = el("span", { class: "fold-slot" });
   const content = el("span", { class: "content" });
-  content.style.setProperty("--d", String(depth));
+  if (depth) content.append("  ".repeat(depth));
   line.append(gutter, foldSlot, content);
   parent.append(line);
   return { line, foldSlot, content, n };
@@ -408,7 +517,11 @@ function foldButton() {
 }
 
 function toggleBlock(block) {
-  const collapsed = block.classList.toggle("is-collapsed");
+  setCollapsed(block, !block.classList.contains("is-collapsed"));
+}
+
+function setCollapsed(block, collapsed) {
+  block.classList.toggle("is-collapsed", collapsed);
   const btn = block.querySelector(":scope > .line .fold");
   if (btn) {
     btn.setAttribute("aria-expanded", String(!collapsed));
@@ -417,14 +530,7 @@ function toggleBlock(block) {
 }
 
 function setAllCollapsed(collapsed) {
-  viewer.querySelectorAll(".block").forEach((block) => {
-    block.classList.toggle("is-collapsed", collapsed);
-    const btn = block.querySelector(":scope > .line .fold");
-    if (btn) {
-      btn.setAttribute("aria-expanded", String(!collapsed));
-      btn.setAttribute("aria-label", collapsed ? "Expand" : "Collapse");
-    }
-  });
+  viewer.querySelectorAll(".block").forEach((block) => setCollapsed(block, collapsed));
 }
 
 function truncMark() {
@@ -594,7 +700,7 @@ function highlightCols(sel) {
   if (end) wrapRange(end, 0, sel.toCol);
 }
 
-function wrapRange(contentEl, start0, end0) {
+function wrapRange(contentEl, start0, end0, className = "col-hl") {
   if (end0 <= start0) return;
   const texts = [];
   const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT);
@@ -610,7 +716,7 @@ function wrapRange(contentEl, start0, end0) {
       range.setStart(textNode, a);
       range.setEnd(textNode, b);
       const mark = document.createElement("mark");
-      mark.className = "col-hl";
+      mark.className = className;
       range.surroundContents(mark);
     }
     pos += len;
@@ -622,6 +728,106 @@ function unwrapMarks() {
     mark.replaceWith(...mark.childNodes);
   });
   viewer.normalize();
+}
+
+function onSearchKey(e) {
+  if (e.key === "Tab") {
+    if (!searchHits.length) return;
+    e.preventDefault();
+    stepSearch(e.shiftKey ? -1 : 1);
+    return;
+  }
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  if (!searchHits.length) return;
+  stepSearch(e.shiftKey ? -1 : 1);
+}
+
+function applySearch({ reset } = {}) {
+  clearSearchMarks();
+
+  const query = searchInput.value;
+  if (!query) {
+    searchCount.textContent = "";
+    searchCount.classList.remove("is-error");
+    return;
+  }
+
+  let pattern;
+  try {
+    pattern = regexToggle.checked ? new RegExp(query, "g") : new RegExp(escapeRe(query), "g");
+  } catch {
+    searchCount.textContent = "Invalid regex";
+    searchCount.classList.add("is-error");
+    return;
+  }
+
+  searchCount.classList.remove("is-error");
+  viewer.querySelectorAll(".line .content").forEach((content) => {
+    const text = content.textContent;
+    const ranges = [];
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+      if (!match[0].length) {
+        pattern.lastIndex += 1;
+        if (pattern.lastIndex > text.length) break;
+        continue;
+      }
+      ranges.push([match.index, match.index + match[0].length]);
+    }
+    for (let i = ranges.length - 1; i >= 0; i -= 1) {
+      wrapRange(content, ranges[i][0], ranges[i][1], "search-hl");
+    }
+  });
+
+  searchHits = [...viewer.querySelectorAll("mark.search-hl")];
+  if (!searchHits.length) {
+    searchCount.textContent = "0";
+    return;
+  }
+  if (reset || searchIndex >= searchHits.length) searchIndex = 0;
+  paintCurrentHit();
+}
+
+function stepSearch(delta) {
+  if (!searchHits.length) return;
+  searchIndex = (searchIndex + delta + searchHits.length) % searchHits.length;
+  paintCurrentHit();
+}
+
+function paintCurrentHit() {
+  searchHits.forEach((mark) => mark.classList.remove("is-current"));
+  const mark = searchHits[searchIndex];
+  if (!mark) return;
+  mark.classList.add("is-current");
+  expandAncestors(mark);
+  mark.scrollIntoView({ block: "center" });
+  searchCount.textContent = `${searchIndex + 1}/${searchHits.length}`;
+}
+
+function expandAncestors(node) {
+  let el = node.parentElement;
+  while (el && el !== viewer) {
+    if (el.classList.contains("block") && el.classList.contains("is-collapsed")) {
+      setCollapsed(el, false);
+    }
+    el = el.parentElement;
+  }
+}
+
+function clearSearchMarks() {
+  viewer.querySelectorAll("mark.search-hl").forEach((mark) => {
+    mark.replaceWith(...mark.childNodes);
+  });
+  viewer.normalize();
+  searchHits = [];
+  searchCount.textContent = "";
+  searchCount.classList.remove("is-error");
+}
+
+function escapeRe(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function openShare(spec) {
@@ -658,6 +864,8 @@ async function buildHash(text, spec) {
   }
   const extras = [nestToggle.checked ? "n1" : "n0"];
   if (spec) extras.push(formatSpec(spec));
+  const jq = jqInput.value.trim();
+  if (jq) extras.push(`j${bytesToB64(new TextEncoder().encode(jq))}`);
   return `${body}|${extras.join("|")}`;
 }
 
@@ -687,11 +895,14 @@ async function readHash(hash) {
     const text = gzipped ? await gunzipBytes(bytes) : new TextDecoder().decode(bytes);
     let nest = null;
     let selRaw = "";
+    let jq = null;
     for (const part of rest ? rest.split("|") : []) {
       if (part === "n0" || part === "n1") nest = part === "n1";
-      else if (part) selRaw = part;
+      else if (part.startsWith("j") && part.length > 1) {
+        jq = new TextDecoder().decode(b64ToBytes(part.slice(1)));
+      } else if (part) selRaw = part;
     }
-    return { text, sel: parseSpec(selRaw), nest };
+    return { text, sel: parseSpec(selRaw), nest, jq };
   } catch {
     return null;
   }
