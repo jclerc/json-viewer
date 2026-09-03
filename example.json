@@ -1,0 +1,21 @@
+// Sample JSONC: comments, nested JSON, every type.
+{
+  "string": "hello",
+  "unicode": "café ✨",
+  "number": 42,
+  "float": 6.022e23,
+  "boolean": true,
+  "off": false,
+  "nothing": null,
+  "empty": {},
+  "list": [1, "two", false, null],
+  /* a JSON string, parsed in place when "Parse nested JSON" is on */
+  "nested": "{\"ok\":true,\"n\":1}",
+  "nestedList": "[{\"id\":1},{\"id\":2}]",
+  "object": {
+    "inner": "value"
+  }
+}
+
+// Second document (JSONL)
+{"ok": true, "n": 2}
