@@ -64,6 +64,34 @@ class Parser {
     return comments;
   }
 
+  looksLikeValue() {
+    const c = this.peek();
+    return (
+      c === "{" ||
+      c === "[" ||
+      c === '"' ||
+      c === "-" ||
+      (c >= "0" && c <= "9") ||
+      c === "t" ||
+      c === "f" ||
+      c === "n"
+    );
+  }
+
+  looksLikeComment() {
+    return this.peek() === "/" && (this.peek(1) === "/" || this.peek(1) === "*");
+  }
+
+  skipJunk() {
+    const start = this.i;
+    while (!this.eof()) {
+      this.skipWs();
+      if (this.eof() || this.looksLikeValue() || this.looksLikeComment()) break;
+      this.i += 1;
+    }
+    return this.i > start;
+  }
+
   parseDocument() {
     const items = [];
 
@@ -71,13 +99,20 @@ class Parser {
       items.push(...this.takeComments());
       if (this.eof()) break;
 
+      if (!this.looksLikeValue()) {
+        if (this.skipJunk()) {
+          items.push({ type: "missing", truncated: true });
+          this.stopped = true;
+        }
+        continue;
+      }
+
       const start = this.i;
       items.push(this.parseValue());
 
       if (this.i === start) {
         this.i += 1;
         this.stopped = true;
-        break;
       }
     }
 

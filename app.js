@@ -12,6 +12,7 @@ const INPUT_DEBOUNCE_MS = 200;
 const THEMES = ["light", "default", "dark"];
 
 const source = document.querySelector("#source");
+const sourceWrap = source.closest(".source-wrap");
 const viewer = document.querySelector("#viewer");
 const statusEl = document.querySelector("#status");
 const fileInput = document.querySelector("#file");
@@ -20,6 +21,7 @@ const shareUrl = document.querySelector("#share-url");
 const shareWarn = document.querySelector("#share-warn");
 const copyBtn = document.querySelector("#copy-btn");
 const selTip = document.querySelector("#sel-tip");
+const toastEl = document.querySelector("#toast");
 const expandBtn = document.querySelector("#expand-btn");
 const collapseBtn = document.querySelector("#collapse-btn");
 const shareBtn = document.querySelector("#share-btn");
@@ -46,6 +48,9 @@ let searchIndex = 0;
 let jqTimer = null;
 let searchTimer = null;
 let jqEnabled = true;
+let lastFormatted = "";
+let toastTimer = null;
+let dragDepth = 0;
 
 init();
 
@@ -78,6 +83,11 @@ async function init() {
   document.querySelector("#example-link").addEventListener("click", onExample);
   document.querySelector("#upload-btn").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", onFile);
+  document.addEventListener("dragenter", onDragEnter);
+  document.addEventListener("dragover", onDragOver);
+  document.addEventListener("dragleave", onDragLeave);
+  document.addEventListener("drop", onDrop);
+  document.addEventListener("dragend", clearDropTarget);
   document.querySelector("#clear-btn").addEventListener("click", clearAll);
   expandBtn.addEventListener("click", () => setAllCollapsed(false));
   collapseBtn.addEventListener("click", () => setAllCollapsed(true));
@@ -91,6 +101,8 @@ async function init() {
   regexToggle.addEventListener("change", onRegexToggle);
   jqInput.addEventListener("input", onJqInput);
   jqBtn.addEventListener("click", onJqToggle);
+  document.addEventListener("keydown", onToolShortcut);
+  applyShortcutLabels();
   document.querySelector("#sel-share-btn").addEventListener("click", () => {
     hideTip();
     openShare(lastTipSpec);
@@ -226,9 +238,48 @@ function onSourceInput() {
 async function onFile() {
   const file = fileInput.files?.[0];
   fileInput.value = "";
-  if (!file) return;
+  if (file) await loadTextFile(file);
+}
+
+async function loadTextFile(file) {
   source.value = await file.text();
   onSourceInput();
+}
+
+function isFileDrag(e) {
+  return Boolean(e.dataTransfer?.types && [...e.dataTransfer.types].includes("Files"));
+}
+
+function onDragEnter(e) {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  dragDepth += 1;
+  sourceWrap.classList.add("is-drop-target");
+}
+
+function onDragOver(e) {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+}
+
+function onDragLeave(e) {
+  if (!isFileDrag(e)) return;
+  dragDepth -= 1;
+  if (dragDepth <= 0) clearDropTarget();
+}
+
+async function onDrop(e) {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  clearDropTarget();
+  const file = e.dataTransfer.files?.[0];
+  if (file) await loadTextFile(file);
+}
+
+function clearDropTarget() {
+  dragDepth = 0;
+  sourceWrap.classList.remove("is-drop-target");
 }
 
 async function onExample(e) {
@@ -321,6 +372,7 @@ function render() {
   fullscreenBtn.disabled = !has;
 
   if (!text.trim()) {
+    lastFormatted = "";
     statusEl.hidden = true;
     viewer.replaceChildren(el("p", { class: "empty" }, "Paste JSON on the left to view it here."));
     clearSearchMarks();
@@ -328,6 +380,7 @@ function render() {
   }
 
   if (!has) {
+    lastFormatted = "";
     statusEl.hidden = false;
     statusEl.className = "status is-trunc";
     statusEl.textContent = jqNote
@@ -346,6 +399,9 @@ function render() {
 
   const n = countValues(ast);
   const trunc = Boolean(ast.truncated);
+  lastFormatted = astToValues(ast)
+    .map((v) => JSON.stringify(v, null, 2))
+    .join("\n");
   statusEl.hidden = false;
   statusEl.className = trunc ? "status is-trunc" : "status";
   statusEl.textContent = `${sourceSize(text)} · ${n} value${n === 1 ? "" : "s"}${trunc ? " · incomplete" : ""}${jqNote}`;
@@ -387,7 +443,11 @@ function renderValue(node, depth, prefix, parent, comma) {
   }
 
   if (node.type === "doc") {
+    let prevMissing = false;
     for (const item of node.items) {
+      const missing = item.type === "missing";
+      if (missing && prevMissing) continue;
+      prevMissing = missing;
       renderValue(item, depth, [], parent, false);
     }
     if (node.truncated && !node.items.some((n) => n.truncated)) {
@@ -817,6 +877,71 @@ function unwrapMarks() {
     mark.replaceWith(...mark.childNodes);
   });
   viewer.normalize();
+}
+
+function applyShortcutLabels() {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  const mod = mac ? "⌘ " : "Ctrl+";
+  document.querySelectorAll("[data-shortcut]").forEach((el) => {
+    el.textContent = `${mod}${el.dataset.shortcut}`;
+  });
+}
+
+function onToolShortcut(e) {
+  if (e.isComposing || e.altKey || e.shiftKey) return;
+  if (!(e.metaKey || e.ctrlKey)) return;
+  if (shareDialog.open) return;
+
+  if (e.code === "KeyK" || e.code === "KeyJ") {
+    e.preventDefault();
+    const input = e.code === "KeyK" ? searchInput : jqInput;
+    input.focus();
+    input.select();
+    return;
+  }
+
+  if (e.code !== "KeyC" || inTextField() || hasTextSelection() || !lastFormatted) return;
+
+  e.preventDefault();
+  copyFormatted();
+}
+
+function inTextField() {
+  const el = document.activeElement;
+  return el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement;
+}
+
+function hasTextSelection() {
+  const el = document.activeElement;
+  if (el && el.selectionStart != null && el.selectionStart !== el.selectionEnd) return true;
+  const sel = getSelection();
+  return Boolean(sel && !sel.isCollapsed && sel.toString());
+}
+
+async function copyFormatted() {
+  try {
+    await navigator.clipboard.writeText(lastFormatted);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = lastFormatted;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  showToast("formatted json copied ✓");
+}
+
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastEl.hidden = true;
+  }, 1400);
 }
 
 function onSearchInput() {

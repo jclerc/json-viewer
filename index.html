@@ -113,13 +113,15 @@
           </button>
         </div>
 
-        <textarea
-          id="source"
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-          placeholder='{"hello": "world"}'
-        ></textarea>
+        <div class="source-wrap">
+          <textarea
+            id="source"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            placeholder='{"hello": "world"}'
+          ></textarea>
+        </div>
 
         <p id="status" class="status" hidden></p>
 
@@ -154,7 +156,9 @@
             autocomplete="off"
             placeholder="Find in JSON"
             aria-label="Find in JSON"
+            aria-keyshortcuts="Meta+K Control+K"
           />
+          <kbd class="tool-shortcut" data-shortcut="K" aria-hidden="true">⌘ K</kbd>
           <span id="search-count" class="tool-meta"></span>
         </div>
 
@@ -170,7 +174,9 @@
             autocapitalize="off"
             placeholder=".foo | select(.bar == 1)"
             aria-label="jq filter"
+            aria-keyshortcuts="Meta+J Control+J"
           />
+          <kbd class="tool-shortcut" data-shortcut="J" aria-hidden="true">⌘ J</kbd>
           <span id="jq-meta" class="tool-meta"></span>
         </div>
 
@@ -246,6 +252,8 @@
         </div>
       </form>
     </dialog>
+
+    <p id="toast" class="toast" hidden role="status"></p>
 
     <script type="module" src="./app.js"></script>
   </body>

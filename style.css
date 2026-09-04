@@ -151,10 +151,18 @@ body {
   color: var(--key);
 }
 
+.source-wrap {
+  flex: 1;
+  display: flex;
+  position: relative;
+  min-width: 0;
+  min-height: 8rem;
+}
+
 #source {
   flex: 1;
   width: 100%;
-  min-height: 8rem;
+  min-height: 0;
   resize: none;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -167,6 +175,30 @@ body {
 #source:focus {
   outline: 2px solid var(--key);
   outline-offset: 1px;
+}
+
+.source-wrap.is-drop-target #source {
+  border-color: transparent;
+  color: transparent;
+  caret-color: transparent;
+}
+
+.source-wrap.is-drop-target #source:focus {
+  outline: none;
+}
+
+.source-wrap.is-drop-target::after {
+  content: "drop json file here";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--key);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 78%, var(--key));
+  color: var(--fg-strong);
+  font-size: 0.95rem;
+  pointer-events: none;
 }
 
 .actions {
@@ -227,6 +259,29 @@ body {
 
 .tool-field input:focus {
   outline: none;
+}
+
+.tool-shortcut {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.1em 0.38em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--btn);
+  font: 0.8rem/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--fg);
+  pointer-events: none;
+  user-select: none;
+}
+
+.tool-field:has(input:placeholder-shown) input {
+  padding-right: 3.2rem;
+}
+
+.tool-field:not(:has(input:placeholder-shown)) .tool-shortcut {
+  display: none;
 }
 
 .tool-field.is-jq-off #jq-input {
@@ -565,6 +620,7 @@ button.primary:hover:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
+  vertical-align: text-bottom;
 }
 
 mark.col-hl {
@@ -593,6 +649,22 @@ mark.search-hl.is-current {
 .sel-tip button {
   box-shadow: 0 4px 16px rgba(0, 43, 54, 0.18);
   background: var(--bg-elev);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 50;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--fg-strong);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 0.85rem;
 }
 
 dialog {

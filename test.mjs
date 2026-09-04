@@ -94,6 +94,18 @@ function eq(a, b, msg) {
   eq(values, [{ a: 1 }, { a: 2 }], "jsonl to values");
 }
 
+{
+  const n = parse("{}\nxxxxxxx\n{}");
+  eq(n.type, "doc", "junk between values is a doc");
+  eq(
+    n.items.map((x) => x.type),
+    ["object", "missing", "object"],
+    "one error between objects",
+  );
+  eq(n.items[0].truncated, false, "first object complete");
+  eq(n.items[2].truncated, false, "last object complete");
+}
+
 function jq(data, filter) {
   const result = applyJq([data], filter);
   if (!result.ok) throw new Error(`${filter}\n  ${result.error}`);
