@@ -8,7 +8,7 @@ const LS_WRAP = "json-viewer.wrap";
 const LS_REGEX = "json-viewer.regex";
 const LS_JQ = "json-viewer.jq";
 const LS_JQ_ON = "json-viewer.jq-on";
-const JQ_DEBOUNCE_MS = 200;
+const INPUT_DEBOUNCE_MS = 200;
 const THEMES = ["light", "default", "dark"];
 
 const source = document.querySelector("#source");
@@ -44,6 +44,7 @@ let lastTipSpec = null;
 let searchHits = [];
 let searchIndex = 0;
 let jqTimer = null;
+let searchTimer = null;
 let jqEnabled = true;
 
 init();
@@ -84,9 +85,9 @@ async function init() {
   document.addEventListener("fullscreenchange", syncFullscreenBtn);
   document.addEventListener("webkitfullscreenchange", syncFullscreenBtn);
   shareBtn.addEventListener("click", () => openShare(currentLineSpec()));
-  searchInput.addEventListener("input", () => applySearch({ reset: true }));
+  searchInput.addEventListener("input", onSearchInput);
   searchInput.addEventListener("keydown", onSearchKey);
-  searchBtn.addEventListener("click", () => stepSearch(1));
+  searchBtn.addEventListener("click", () => goSearch(1));
   regexToggle.addEventListener("change", onRegexToggle);
   jqInput.addEventListener("input", onJqInput);
   jqBtn.addEventListener("click", onJqToggle);
@@ -189,7 +190,7 @@ function onJqInput() {
   lastClicked = null;
   pendingSel = null;
   clearTimeout(jqTimer);
-  jqTimer = setTimeout(render, JQ_DEBOUNCE_MS);
+  jqTimer = setTimeout(render, INPUT_DEBOUNCE_MS);
 }
 
 function toggleFullscreen() {
@@ -818,14 +819,28 @@ function unwrapMarks() {
   viewer.normalize();
 }
 
+function onSearchInput() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => applySearch({ reset: true }), INPUT_DEBOUNCE_MS);
+}
+
 function onSearchKey(e) {
   if (e.key !== "Enter") return;
   e.preventDefault();
-  if (!searchHits.length) return;
-  stepSearch(e.shiftKey ? -1 : 1);
+  goSearch(e.shiftKey ? -1 : 1);
+}
+
+function goSearch(delta) {
+  if (searchTimer) {
+    applySearch({ reset: true });
+    return;
+  }
+  stepSearch(delta);
 }
 
 function applySearch({ reset } = {}) {
+  clearTimeout(searchTimer);
+  searchTimer = null;
   clearSearchMarks();
 
   const query = searchInput.value;
