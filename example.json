@@ -8,12 +8,18 @@
   "off": false,
   "nothing": null,
   "empty": {},
-  "list": [1, "two", false, null],
+  "list": [1, "two", false, null, [3, {"n": 4}]],
   /* a JSON string, parsed in place when "Parse nested JSON" is on */
-  "nested": "{\"ok\":true,\"n\":1}",
-  "nestedList": "[{\"id\":1},{\"id\":2}]",
+  "nested": "{\"ok\":true,\"n\":1,\"child\":{\"items\":[1,2]}}",
+  "nestedList": "[{\"id\":1,\"meta\":{\"tag\":\"a\"}},{\"id\":2}]",
   "object": {
-    "inner": "value"
+    "inner": {
+      "items": [
+        { "id": 1, "tags": ["a", "b"] },
+        { "id": 2, "tags": ["c"] }
+      ],
+      "meta": { "source": "demo" }
+    }
   }
 }
 
