@@ -129,6 +129,17 @@ function jq(data, filter) {
 }
 
 {
+  const mixed = applyJq([{}, "bad string", {}], ".test");
+  eq(mixed.ok, true, "runtime errors do not fail the filter");
+  eq(mixed.values, [null, null], "successful objects still emit");
+  eq(mixed.items.length, 3, "one item per input");
+  eq(mixed.items[0], { ok: true, values: [null] }, "empty object .test is null");
+  eq(mixed.items[1].ok, false, "string .test errors");
+  assert(String(mixed.items[1].error).includes("string"), "error names the type");
+  eq(mixed.items[2], { ok: true, values: [null] }, "third object still emits");
+}
+
+{
   const values = astToValues(parse(readFileSync(new URL("./example.json", import.meta.url), "utf8")));
   const jsonl = applyJq(values, ".n");
   eq(jsonl.ok, true, "jq jsonl ok");

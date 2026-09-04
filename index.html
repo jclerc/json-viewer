@@ -143,31 +143,33 @@
         </div>
 
         <div class="tool-field">
-          <label class="tool-label" for="search-input">
+          <button type="button" class="tool-label" id="search-btn">
             <svg class="glyph" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><use href="#g-search" /></svg>
             Search
-          </label>
+          </button>
           <input
             id="search-input"
             type="search"
             spellcheck="false"
             autocomplete="off"
             placeholder="Find in JSON"
+            aria-label="Find in JSON"
           />
           <span id="search-count" class="tool-meta"></span>
         </div>
 
         <div class="tool-field">
-          <label class="tool-label" for="jq-input">
+          <button type="button" class="tool-label" id="jq-btn" aria-pressed="true">
             <svg class="glyph" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><use href="#g-jq" /></svg>
             Apply jq
-          </label>
+          </button>
           <input
             id="jq-input"
             spellcheck="false"
             autocomplete="off"
             autocapitalize="off"
             placeholder=".foo | select(.bar == 1)"
+            aria-label="jq filter"
           />
           <span id="jq-meta" class="tool-meta"></span>
         </div>

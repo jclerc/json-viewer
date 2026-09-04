@@ -7,6 +7,8 @@ const LS_NEST = "json-viewer.nest";
 const LS_WRAP = "json-viewer.wrap";
 const LS_REGEX = "json-viewer.regex";
 const LS_JQ = "json-viewer.jq";
+const LS_JQ_ON = "json-viewer.jq-on";
+const JQ_DEBOUNCE_MS = 200;
 const THEMES = ["light", "default", "dark"];
 
 const source = document.querySelector("#source");
@@ -23,9 +25,12 @@ const collapseBtn = document.querySelector("#collapse-btn");
 const shareBtn = document.querySelector("#share-btn");
 const fullscreenBtn = document.querySelector("#fullscreen-btn");
 const searchInput = document.querySelector("#search-input");
+const searchBtn = document.querySelector("#search-btn");
 const searchCount = document.querySelector("#search-count");
 const jqInput = document.querySelector("#jq-input");
+const jqBtn = document.querySelector("#jq-btn");
 const jqMeta = document.querySelector("#jq-meta");
+const jqField = jqInput.closest(".tool-field");
 const nestToggle = document.querySelector("#nest-toggle");
 const wrapToggle = document.querySelector("#wrap-toggle");
 const regexToggle = document.querySelector("#regex-toggle");
@@ -38,6 +43,8 @@ let pendingSel = null;
 let lastTipSpec = null;
 let searchHits = [];
 let searchIndex = 0;
+let jqTimer = null;
+let jqEnabled = true;
 
 init();
 
@@ -47,6 +54,7 @@ async function init() {
   wrapToggle.checked = localStorage.getItem(LS_WRAP) !== "0";
   regexToggle.checked = localStorage.getItem(LS_REGEX) !== "0";
   applyWrap(wrapToggle.checked);
+  applyJqOn(localStorage.getItem(LS_JQ_ON) !== "0");
 
   const fromHash = await readHash(location.hash);
   if (fromHash?.text) {
@@ -55,6 +63,7 @@ async function init() {
     if (fromHash.nest != null) applyNest(fromHash.nest);
     pendingSel = fromHash.sel;
     setJq(fromHash.jq ?? "");
+    if (fromHash.jq) applyJqOn(true);
   } else {
     const saved = localStorage.getItem(LS_TEXT);
     if (saved) source.value = saved;
@@ -77,8 +86,10 @@ async function init() {
   shareBtn.addEventListener("click", () => openShare(currentLineSpec()));
   searchInput.addEventListener("input", () => applySearch({ reset: true }));
   searchInput.addEventListener("keydown", onSearchKey);
+  searchBtn.addEventListener("click", () => stepSearch(1));
   regexToggle.addEventListener("change", onRegexToggle);
   jqInput.addEventListener("input", onJqInput);
+  jqBtn.addEventListener("click", onJqToggle);
   document.querySelector("#sel-share-btn").addEventListener("click", () => {
     hideTip();
     openShare(lastTipSpec);
@@ -139,16 +150,46 @@ function applyWrap(on) {
 }
 
 function setJq(text) {
+  clearTimeout(jqTimer);
   jqInput.value = text;
   localStorage.setItem(LS_JQ, text);
 }
 
-function onJqInput() {
-  localStorage.setItem(LS_JQ, jqInput.value);
+function applyJqOn(on) {
+  jqEnabled = on;
+  jqBtn.setAttribute("aria-pressed", String(on));
+  jqField.classList.toggle("is-jq-off", !on);
+  localStorage.setItem(LS_JQ_ON, on ? "1" : "0");
+}
+
+function onJqToggle() {
+  applyJqOn(!jqEnabled);
   lineSel = null;
   lastClicked = null;
   pendingSel = null;
   render();
+}
+
+function setJqGlobalError(message) {
+  jqMeta.textContent = message;
+  jqMeta.classList.toggle("is-error", Boolean(message));
+  if (message) {
+    jqInput.setAttribute("aria-invalid", "true");
+    jqField.dataset.jqError = message;
+  } else {
+    jqInput.removeAttribute("aria-invalid");
+    delete jqField.dataset.jqError;
+  }
+}
+
+function onJqInput() {
+  localStorage.setItem(LS_JQ, jqInput.value);
+  if (!jqEnabled) return;
+  lineSel = null;
+  lastClicked = null;
+  pendingSel = null;
+  clearTimeout(jqTimer);
+  jqTimer = setTimeout(render, JQ_DEBOUNCE_MS);
 }
 
 function toggleFullscreen() {
@@ -221,6 +262,10 @@ async function onHashChange() {
     setJq(hashJq);
     needRender = true;
   }
+  if (fromHash.jq && !jqEnabled) {
+    applyJqOn(true);
+    needRender = true;
+  }
   if (fromHash.text !== source.value) {
     source.value = fromHash.text;
     localStorage.setItem(LS_TEXT, fromHash.text);
@@ -249,23 +294,20 @@ function render() {
 
   let ast = parsed;
   let jqNote = "";
-  jqMeta.textContent = "";
-  jqMeta.classList.remove("is-error");
+  setJqGlobalError("");
 
   const jqFilter = jqInput.value.trim();
-  if (sourceHas && jqFilter) {
+  if (jqEnabled && sourceHas && jqFilter) {
     const result = applyJq(astToValues(parsed), jqFilter);
     if (!result.ok) {
-      jqMeta.textContent = result.error;
-      jqMeta.classList.add("is-error");
+      setJqGlobalError(result.error);
     } else if (!result.passthrough) {
-      if (!result.values.length) {
+      ast = jqResultToAst(result.items, nestToggle.checked);
+      const hasItemErrors = result.items.some((item) => !item.ok);
+      if (!result.values.length && !hasItemErrors) {
         jqNote = " · jq: no results";
-        ast = null;
       } else {
-        const outText = result.values.map((v) => JSON.stringify(v, null, 2)).join("\n");
-        ast = parse(outText, { nest: nestToggle.checked });
-        jqNote = result.values.length === 1 ? " · jq" : ` · jq ×${result.values.length}`;
+        jqNote = result.values.length <= 1 ? " · jq" : ` · jq ×${result.values.length}`;
       }
     }
   }
@@ -333,6 +375,13 @@ function renderValue(node, depth, prefix, parent, comma) {
 
   if (node.type === "comment") {
     renderComment(node, depth, parent);
+    return;
+  }
+
+  if (node.type === "jq-error") {
+    const row = newLine(depth, parent);
+    row.content.append(...prefix, jqErrorMark(node.message));
+    if (comma) row.content.append(tok("p", ","));
     return;
   }
 
@@ -534,7 +583,36 @@ function setAllCollapsed(collapsed) {
 }
 
 function truncMark() {
-  return el("span", { class: "trunc", title: "Input ended while parsing" }, "JSON ended here");
+  return errorMark("JSON ended here", "Input ended while parsing");
+}
+
+function jqErrorMark(message) {
+  const text = message.startsWith("jq: ") ? message.slice(4) : message;
+  return errorMark(text, message);
+}
+
+function errorMark(text, title) {
+  return el("span", { class: "trunc", title }, text);
+}
+
+function jqResultToAst(items, nest) {
+  const nodes = [];
+  for (const item of items) {
+    if (!item.ok) {
+      nodes.push({ type: "jq-error", message: item.error });
+      continue;
+    }
+    for (const value of item.values) {
+      const text = JSON.stringify(value, null, 2);
+      if (text === undefined) continue;
+      const node = parse(text, { nest });
+      if (node.type === "doc") nodes.push(...node.items);
+      else nodes.push(node);
+    }
+  }
+  if (nodes.length === 0) return null;
+  if (nodes.length === 1) return nodes[0];
+  return { type: "doc", items: nodes };
 }
 
 function appendTruncOnLast(parent) {
@@ -700,12 +778,22 @@ function highlightCols(sel) {
   if (end) wrapRange(end, 0, sel.toCol);
 }
 
-function wrapRange(contentEl, start0, end0, className = "col-hl") {
-  if (end0 <= start0) return;
+function contentTextNodes(contentEl, { skipTrunc = false } = {}) {
   const texts = [];
   const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) texts.push(walker.currentNode);
+  while (walker.nextNode()) {
+    if (skipTrunc && walker.currentNode.parentElement?.closest(".trunc")) continue;
+    texts.push(walker.currentNode);
+  }
+  return texts;
+}
 
+function wrapRange(contentEl, start0, end0, className = "col-hl") {
+  wrapTextRange(contentTextNodes(contentEl), start0, end0, className);
+}
+
+function wrapTextRange(texts, start0, end0, className) {
+  if (end0 <= start0) return;
   let pos = 0;
   for (const textNode of texts) {
     const len = textNode.textContent.length;
@@ -731,12 +819,6 @@ function unwrapMarks() {
 }
 
 function onSearchKey(e) {
-  if (e.key === "Tab") {
-    if (!searchHits.length) return;
-    e.preventDefault();
-    stepSearch(e.shiftKey ? -1 : 1);
-    return;
-  }
   if (e.key !== "Enter") return;
   e.preventDefault();
   if (!searchHits.length) return;
@@ -764,7 +846,8 @@ function applySearch({ reset } = {}) {
 
   searchCount.classList.remove("is-error");
   viewer.querySelectorAll(".line .content").forEach((content) => {
-    const text = content.textContent;
+    const texts = contentTextNodes(content, { skipTrunc: true });
+    const text = texts.map((node) => node.textContent).join("");
     const ranges = [];
     pattern.lastIndex = 0;
     let match;
@@ -777,7 +860,7 @@ function applySearch({ reset } = {}) {
       ranges.push([match.index, match.index + match[0].length]);
     }
     for (let i = ranges.length - 1; i >= 0; i -= 1) {
-      wrapRange(content, ranges[i][0], ranges[i][1], "search-hl");
+      wrapTextRange(texts, ranges[i][0], ranges[i][1], "search-hl");
     }
   });
 
@@ -865,7 +948,7 @@ async function buildHash(text, spec) {
   const extras = [nestToggle.checked ? "n1" : "n0"];
   if (spec) extras.push(formatSpec(spec));
   const jq = jqInput.value.trim();
-  if (jq) extras.push(`j${bytesToB64(new TextEncoder().encode(jq))}`);
+  if (jqEnabled && jq) extras.push(`j${bytesToB64(new TextEncoder().encode(jq))}`);
   return `${body}|${extras.join("|")}`;
 }
 

@@ -432,9 +432,9 @@ function isUsefulNest(node) {
 export function countValues(node) {
   if (!node) return 0;
   if (node.type === "doc") {
-    return node.items.filter((n) => n.type !== "missing" && n.type !== "comment").length;
+    return node.items.filter((n) => n.type !== "missing" && n.type !== "comment" && n.type !== "jq-error").length;
   }
-  if (node.type === "missing" || node.type === "comment") return 0;
+  if (node.type === "missing" || node.type === "comment" || node.type === "jq-error") return 0;
   return 1;
 }
 
@@ -443,12 +443,12 @@ export function isEmptyAst(node) {
 }
 
 export function astToValues(node) {
-  if (!node || node.type === "missing") return [];
+  if (!node || node.type === "missing" || node.type === "jq-error") return [];
   if (node.type === "comment") return [];
   if (node.type === "doc") {
     const values = [];
     for (const item of node.items) {
-      if (item.type === "comment" || item.type === "missing") continue;
+      if (item.type === "comment" || item.type === "missing" || item.type === "jq-error") continue;
       values.push(astToValue(item));
     }
     return values;

@@ -2,14 +2,28 @@ export function applyJq(inputs, filter) {
   const trimmed = String(filter ?? "").trim();
   if (!trimmed) return { ok: true, values: inputs, passthrough: true };
 
+  let ast;
   try {
-    const ast = parseJq(trimmed);
-    const values = [];
-    for (const input of inputs) values.push(...evalNode(ast, input));
-    return { ok: true, values };
+    ast = parseJq(trimmed);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+
+  const items = [];
+  const values = [];
+  for (const input of inputs) {
+    try {
+      const out = evalNode(ast, input);
+      items.push({ ok: true, values: out });
+      values.push(...out);
+    } catch (err) {
+      items.push({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return { ok: true, values, items };
 }
 
 export function parseJq(text) {

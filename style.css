@@ -178,6 +178,7 @@ body {
 .tool-field {
   display: flex;
   align-items: stretch;
+  position: relative;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -189,7 +190,7 @@ body {
   outline-offset: 1px;
 }
 
-.tool-label {
+.tool-field .tool-label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -209,7 +210,7 @@ body {
   user-select: none;
 }
 
-.tool-label:hover {
+.tool-field .tool-label:hover {
   background: var(--btn-hover);
 }
 
@@ -226,6 +227,11 @@ body {
 
 .tool-field input:focus {
   outline: none;
+}
+
+.tool-field.is-jq-off #jq-input {
+  text-decoration: line-through;
+  color: var(--fg-dim);
 }
 
 .tool-field input[type="search"]::-webkit-search-decoration,
@@ -251,6 +257,28 @@ body {
 
 .tool-meta.is-error {
   color: var(--warn-bad);
+  cursor: help;
+}
+
+.tool-field[data-jq-error]:has(#jq-input:hover)::after,
+.tool-field[data-jq-error]:has(#jq-meta:hover)::after {
+  content: attr(data-jq-error);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 40;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--fg-strong);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  pointer-events: none;
 }
 
 .glyphs {
@@ -532,6 +560,9 @@ button.primary:hover:not(:disabled) {
   color: var(--trunc-fg);
   border-radius: 3px;
   font-size: 0.8em;
+  max-width: min(40em, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
 }
